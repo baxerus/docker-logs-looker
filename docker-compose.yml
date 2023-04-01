@@ -1,0 +1,16 @@
+version: '3.9'
+
+services:
+  docker-logs-looker:
+    image: docker-logs-looker
+    build: .
+    container_name: docker-logs-looker
+    restart: always
+    cpus: 0.25
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+#    environment:
+#      - TAIL=10
+#      - CONTAINER_LIST=aaa-example-service
+    ports:
+      - 1234:8080
