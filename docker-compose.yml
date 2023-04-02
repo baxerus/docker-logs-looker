@@ -2,8 +2,7 @@ version: '3.9'
 
 services:
   docker-logs-looker:
-    image: docker-logs-looker
-    build: .
+    image: ghcr.io/baxerus/docker-logs-looker:latest
     container_name: docker-logs-looker
     restart: always
     cpus: 0.25
