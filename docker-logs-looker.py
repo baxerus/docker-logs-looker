@@ -85,7 +85,9 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                         self.send_response(200)
                         if self.headers.get('accept').split(',', 1)[0] == 'text/html':
                             self.send_header('Content-type', 'text/html')                        
-                            output = ansi_converter.convert(output.decode()).encode('utf-8')
+                            output = ansi_converter.convert(output.decode())
+                            output = output.replace('<title>', '<title>{} - '.format(container))
+                            output = output.encode('utf-8')
                         else:
                             self.send_header('Content-type', 'text/plain')
                         self.end_headers()
@@ -133,8 +135,7 @@ except (KeyError, ValueError):
     pass
 logging.info('Default log tail will be {} lines'.format(tail_environ))
 
-ansi_converter = Ansi2HTMLConverter()
-ansi_converter.convert('test')
+ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
 
 httpd = HTTPServer(('', 8080), SimpleHTTPRequestHandler)
 try:
