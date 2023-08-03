@@ -6,6 +6,7 @@ services:
     container_name: docker-logs-looker
     restart: always
     cpus: 0.25
+    mem_limit: 250M
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 #    environment:

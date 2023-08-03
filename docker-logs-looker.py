@@ -16,7 +16,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         docker_container_names_list = container_list
 
         if not docker_container_names_list:
-            # Built a list, because no valid container names where given as enviroment variables
+            # Built a list, because no valid container names where given as environment variables
             try:
                 docker_container_names_list = check_output(['docker', 'ps', '--all', '--format', '{{.Names}}'], stderr=STDOUT).decode('utf-8').splitlines()
                 docker_container_names_list.sort()
@@ -33,7 +33,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type', 'text/html')
             self.end_headers()
 
-            output =  '''<!doctype html>
+            output = '''<!doctype html>
 <html>
      <head>
          <title>Docker Logs Looker</title>
@@ -57,7 +57,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
          <pre>
 '''
             for container in docker_container_names_list:
-                output += '<a href="/{}">{}</a>\n'.format(container, container)
+                output += f'<a href="/{container}">{container}</a>\n'
             output += '''        </pre>
     </body>
 </html>
@@ -77,27 +77,22 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                     output = None
                     try:
-                        output = check_output(['docker', 'logs', '--tail', '{}'.format(tail), '-t', '{}'.format(container)], stderr=STDOUT)
-                    except CalledProcessError:
-                        pass
-
-                    if output:
+                        output = check_output(['docker', 'logs', '--tail', str(tail), '-t', str(container)], stderr=STDOUT)
                         self.send_response(200)
                         if self.headers.get('accept').split(',', 1)[0] == 'text/html':
-                            self.send_header('Content-type', 'text/html')                        
+                            self.send_header('Content-type', 'text/html')
                             output = ansi_converter.convert(output.decode())
-                            output = output.replace('<title>', '<title>{} - '.format(container))
+                            output = output.replace('<title>', f'<title>{container} - ')
                             output = output.encode('utf-8')
                         else:
                             self.send_header('Content-type', 'text/plain')
                         self.end_headers()
                         self.wfile.write(output)
-
-                    else:
+                    except CalledProcessError:
                         self.send_response(404)
                         self.send_header('Content-type', 'text/plain')
                         self.end_headers()
-                        self.wfile.write('Could not get logs for "{}"'.format(container).encode('utf-8'))
+                        self.wfile.write(f'Could not get logs for "{container}"'.encode('utf-8'))
 
                     found = True
                     break
@@ -106,7 +101,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
-                self.wfile.write('"{}" not found'.format(path).encode('utf-8'))
+                self.wfile.write(f'"{path}" not found'.encode('utf-8'))
 
 
 logging.basicConfig(format='%(message)s', level=logging.INFO)
@@ -118,22 +113,22 @@ try:
         if (match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]+$', container_name)):
             container_list.append(container_name)
         else:
-            logging.info('"{}" is not a valid container name. Skipping'.format(container_name))
+            logging.info(f'"{container_name}" is not a valid container name. Skipping')
 except KeyError:
     pass
 
 if container_list:
     container_list.sort()
-    logging.info('These containers logs are available: {}'.format(', '.join(container_list)))
+    logging.info(f'These containers logs are available: {", ".join(container_list)}')
 else:
-    logging.info('Since no "CONTAINER_LIST" enviroment variable was given ALL containers logs will be available')
+    logging.info('Since no "CONTAINER_LIST" environment variable was given ALL containers logs will be available')
 
 tail_environ = 100
 try:
     tail_environ = abs(int(environ['TAIL']))
 except (KeyError, ValueError):
     pass
-logging.info('Default log tail will be {} lines'.format(tail_environ))
+logging.info(f'Default log tail will be {tail_environ} lines')
 
 ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
 
