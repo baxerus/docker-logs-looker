@@ -29,10 +29,25 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                 logging.info('Could not get list of docker container names with "docker ps --all"')
 
         parsed = urlparse(self.path)
-        path = parsed.path.split('/')[-1]
+
+        path = parsed.path.strip('/')
+        path_parts = path.split('/')
+
+        path_command_part = None
+        try:
+            path_command_part = path_parts[0]
+        except IndexError:
+            pass
+
+        path_container_part = None
+        try:
+            path_container_part = path_parts[1]
+        except IndexError:
+            pass
+
         query = parse_qs(parsed.query)
 
-        if path == '':
+        if not path_command_part:
 
             self.send_response(200)
 
@@ -67,7 +82,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                 for container in docker_container_names_list:
 
-                    output += f'<a href="/{container}">{container}</a>\n'
+                    output += f'<a href="/logs/{container}">{container}</a>\n'
 
                 output += '''        </pre>
     </body>
@@ -87,13 +102,13 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
             self.wfile.write(output.encode('utf-8'))
 
-        else:
+            return
 
-            found = False
+        if path_command_part == 'logs' and path_container_part:
 
             for container in docker_container_names_list:
 
-                if path == container:
+                if path_container_part == container:
 
                     tail = tail_environ
                     try:
@@ -107,7 +122,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                     output = None
                     try:
 
-                        output = check_output(['docker', 'logs', '--tail', str(tail), '-t', str(container)], stderr=STDOUT)
+                        output = check_output(['docker', 'logs', '--tail', str(tail), '--timestamps', str(container)], stderr=STDOUT)
                         self.send_response(200)
 
                         if self.headers.get('Accept').split(',', 1)[0] == 'text/html':
@@ -135,15 +150,13 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                     found = True
 
-                    break
+                    return
 
-            if not found:
+        self.send_response(404)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
 
-                self.send_response(404)
-                self.send_header('Content-type', 'text/plain')
-                self.end_headers()
-
-                self.wfile.write(f'"{path}" not found'.encode('utf-8'))
+        self.wfile.write(f'"{path}" not found'.encode('utf-8'))
 
 
 logging.basicConfig(format='%(message)s', level=logging.INFO)
