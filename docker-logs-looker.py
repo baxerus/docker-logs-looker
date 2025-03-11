@@ -20,7 +20,9 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             # Built a list, because no valid container names where given as environment variables
             try:
 
-                docker_container_names_list = check_output(['docker', 'ps', '--all', '--format', '{{.Names}}'], stderr=STDOUT).decode('utf-8').splitlines()
+                command = ['docker', 'ps', '--all', '--format', '{{.Names}}']
+
+                docker_container_names_list = check_output(command, stderr=STDOUT).decode('utf-8').splitlines()
                 docker_container_names_list.sort()
 
             except CalledProcessError:
@@ -119,10 +121,24 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                         pass
 
+                    timestamps = timestamps_environ
+                    try:
+
+                        timestamps = map_boolean.get(query['timestamps'][0].lower(), timestamps)
+
+                    except (KeyError):
+
+                        pass
+
                     output = None
                     try:
 
-                        output = check_output(['docker', 'logs', '--tail', str(tail), '--timestamps', str(container)], stderr=STDOUT)
+                        command = ['docker', 'logs', '--tail', str(tail)]
+                        if timestamps:
+                            command.append('--timestamps')
+                        command.append(str(container))
+
+                        output = check_output(command, stderr=STDOUT)
                         self.send_response(200)
 
                         if self.headers.get('Accept').split(',', 1)[0] == 'text/html':
@@ -148,8 +164,6 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                         self.wfile.write(f'Could not get logs for "{container}"'.encode('utf-8'))
 
-                    found = True
-
                     return
 
         self.send_response(404)
@@ -158,6 +172,22 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
         self.wfile.write(f'"{path}" not found'.encode('utf-8'))
 
+
+map_boolean = {
+    '': True,
+    'true': True,
+    '1': True,
+    'yes': True,
+    'y': True,
+    'enable': True,
+    'on': True,
+    'false': False,
+    '0': False,
+    'no': False,
+    'n': False,
+    'disable': False,
+    'off': False
+    }
 
 logging.basicConfig(format='%(message)s', level=logging.INFO)
 
@@ -199,6 +229,21 @@ except (KeyError, ValueError):
     pass
 
 logging.info(f'Default log tail will be {tail_environ} lines')
+
+timestamps_environ = False
+try:
+
+    timestamps_environ = map_boolean.get(environ['TIMESTAMPS'].lower(), timestamps_environ)
+
+except (KeyError):
+
+    pass
+
+if timestamps_environ:
+    logging.info('Timestamps will be shown by default')
+else:
+    logging.info('Timestamps will not be shown by default')
+
 
 ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
 
