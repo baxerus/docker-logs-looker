@@ -11,5 +11,6 @@ services:
       # - CONTAINER_LIST=aaa-example-service
       # - TAIL=10
       - TIMESTAMPS=enable
+      - INSPECT=enable
     ports:
       - 1234:8080

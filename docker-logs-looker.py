@@ -7,6 +7,7 @@ from urllib.parse import urlparse, parse_qs
 from re import match
 import logging
 from ansi2html import Ansi2HTMLConverter
+from json import loads, dumps, JSONDecodeError
 
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -62,6 +63,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 <html>
      <head>
          <title>Docker Logs Looker</title>
+         <meta charset="UTF-8">
          <style type="text/css">
              body {
                  background-color: #000000;
@@ -84,7 +86,13 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                 for container in docker_container_names_list:
 
-                    output += f'<a href="/logs/{container}">{container}</a>\n'
+                    output += f'<a href="/logs/{container}">{container}</a>'
+
+                    if inspect_environ:
+
+                        output += f' <a href="/inspect/{container}">ℹ️</a>'
+
+                    output += '\n'
 
                 output += '''        </pre>
     </body>
@@ -126,7 +134,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                         timestamps = map_boolean.get(query['timestamps'][0].lower(), timestamps)
 
-                    except (KeyError):
+                    except KeyError:
 
                         pass
 
@@ -139,6 +147,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                         command.append(str(container))
 
                         output = check_output(command, stderr=STDOUT)
+
                         self.send_response(200)
 
                         if self.headers.get('Accept').split(',', 1)[0] == 'text/html':
@@ -162,7 +171,44 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                         self.send_header('Content-type', 'text/plain')
                         self.end_headers()
 
-                        self.wfile.write(f'Could not get logs for "{container}"'.encode('utf-8'))
+                        self.wfile.write(
+                            f'Could not get logs for "{container}"'.encode('utf-8')
+                        )
+
+                    return
+
+        if inspect_environ and path_command_part == 'inspect' and path_container_part:
+
+            for container in docker_container_names_list:
+
+                if path_container_part == container:
+
+                    output = None
+                    try:
+
+                        command = ['docker', 'inspect', '--format', 'json', str(container)]
+
+                        output = check_output(command, stderr=STDOUT)
+
+                        # Pretty printing JSON. Also validates that output is really JSON
+                        output = loads(output)
+                        output = dumps(output, indent=4).encode('utf-8')
+
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+
+                        self.wfile.write(output)
+
+                    except (CalledProcessError, JSONDecodeError):
+
+                        self.send_response(404)
+                        self.send_header('Content-type', 'text/plain')
+                        self.end_headers()
+
+                        self.wfile.write(
+                            f'Could not inspect "{container}"'.encode('utf-8')
+                        )
 
                     return
 
@@ -235,15 +281,28 @@ try:
 
     timestamps_environ = map_boolean.get(environ['TIMESTAMPS'].lower(), timestamps_environ)
 
-except (KeyError):
+except KeyError:
 
     pass
 
 if timestamps_environ:
     logging.info('Timestamps will be shown by default')
 else:
-    logging.info('Timestamps will not be shown by default')
+    logging.info('Timestamps will NOT be shown by default')
 
+inspect_environ = False
+try:
+
+    inspect_environ = map_boolean.get(environ['INSPECT'].lower(), timestamps_environ)
+
+except KeyError:
+
+    pass
+
+if inspect_environ:
+    logging.info('The "inspect" command is available')
+else:
+    logging.info('The "inspect" command is NOT available')
 
 ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
 
