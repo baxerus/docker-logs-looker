@@ -43,24 +43,25 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
         path_command_part = None
         try:
-            path_command_part = path_parts[0]
+            path_command_part = "/".join(path_parts[0:-1])
         except IndexError:
             pass
 
         path_container_part = None
         try:
-            path_container_part = path_parts[1]
+            path_container_part = path_parts[-1]
         except IndexError:
             pass
 
         query = parse_qs(parsed.query)
 
-        if not path_command_part:
+        accept_header = self.headers.get("Accept").split(",", 1)[0]
 
-            self.send_response(200)
+        if not path_command_part and not path_container_part:
 
-            if self.headers.get("Accept").split(",", 1)[0] == "text/html":
+            if accept_header == "text/html":
 
+                self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
 
@@ -91,11 +92,11 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                 for container in docker_container_names_list:
 
-                    output += f'<a href="/logs/{container}">{container}</a>'
+                    output += f'<a href="/command/logs/{container}">{container}</a>'
 
                     if inspect_environ:
 
-                        output += f' <a href="/inspect/{container}">ℹ️</a>'
+                        output += f' <a href="/command/inspect/{container}">ℹ️</a>'
 
                     output += "\n"
 
@@ -104,22 +105,27 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 </html>
 """
 
-            else:
+                self.wfile.write(output.encode("utf-8"))
 
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
+                return
 
-                output = ""
+            # Fallback to "text/plain"
 
-                for container in docker_container_names_list:
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
 
-                    output += f"{container}\n"
+            output = ""
+
+            for container in docker_container_names_list:
+
+                output += f"{container}\n"
 
             self.wfile.write(output.encode("utf-8"))
 
             return
 
-        if path_command_part == "logs" and path_container_part:
+        if path_command_part == "command/logs" and path_container_part:
 
             for container in docker_container_names_list:
 
@@ -155,22 +161,29 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                         output = check_output(command, stderr=STDOUT)
 
-                        self.send_response(200)
+                        if accept_header == "text/html":
 
-                        if self.headers.get("Accept").split(",", 1)[0] == "text/html":
-
+                            self.send_response(200)
                             self.send_header("Content-type", "text/html")
+                            self.end_headers()
+
                             output = ansi_converter.convert(output.decode())
                             output = output.replace("<title>", f"<title>{container} - ")
                             output = output.encode("utf-8")
 
-                        else:
+                            self.wfile.write(output)
 
-                            self.send_header("Content-type", "text/plain")
+                            return
 
+                        # Fallback to "text/plain"
+
+                        self.send_response(200)
+                        self.send_header("Content-type", "text/plain")
                         self.end_headers()
 
                         self.wfile.write(output)
+
+                        return
 
                     except CalledProcessError:
 
@@ -182,9 +195,15 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                             f"Could not get logs for '{container}'".encode("utf-8")
                         )
 
+                        return
+
                     return
 
-        if inspect_environ and path_command_part == "inspect" and path_container_part:
+        if (
+            inspect_environ
+            and path_command_part == "command/inspect"
+            and path_container_part
+        ):
 
             for container in docker_container_names_list:
 
