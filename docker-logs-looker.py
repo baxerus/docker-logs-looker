@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from json import JSONDecodeError, dumps, loads
 from os import environ
 from re import match
+from socket import AF_INET6
 from subprocess import STDOUT, CalledProcessError, check_output
 from urllib.parse import parse_qs, urlparse
 
@@ -342,7 +343,12 @@ else:
 
 ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
 
-httpd = HTTPServer(("", 8080), SimpleHTTPRequestHandler)
+
+class HTTPServerV6(HTTPServer):
+    address_family = AF_INET6
+
+
+httpd = HTTPServerV6(("::", 8080), SimpleHTTPRequestHandler)
 try:
 
     logging.info("Docker Logs Looker started")
