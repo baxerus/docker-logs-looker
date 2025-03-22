@@ -56,7 +56,11 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
         query = parse_qs(parsed.query)
 
-        accept_header = self.headers.get("Accept").split(",", 1)[0]
+        accept_header = ""
+        try:
+            accept_header = self.headers.get("Accept").split(",", 1)[0]
+        except AttributeError:
+            pass
 
         if not path_command_part and not path_container_part:
 
@@ -98,6 +102,10 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                     if inspect_environ:
 
                         output += f' <a href="/command/inspect/{container}">ℹ️</a>'
+
+                    if health_environ:
+
+                        output += f' <a href="/health/{container}">🏥</a>'
 
                     output += "\n"
 
@@ -170,6 +178,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                             output = ansi_converter.convert(output.decode())
                             output = output.replace("<title>", f"<title>{container} - ")
+                            output = output.replace("\n</pre>", "</pre>")
+                            output = output.replace("</body>\n", "</body>")
                             output = output.encode("utf-8")
 
                             self.wfile.write(output)
@@ -245,6 +255,68 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
                     return
 
+        if health_environ and path_command_part == "health" and path_container_part:
+
+            for container in docker_container_names_list:
+
+                if path_container_part == container:
+
+                    output = None
+                    try:
+
+                        command = [
+                            "docker",
+                            "inspect",
+                            "--format",
+                            "{{ .State.Health.Status }}",
+                            str(container),
+                        ]
+
+                        output = check_output(command, stderr=STDOUT)
+                        output = output.strip()
+
+                        if accept_header == "text/html":
+
+                            self.send_response(200)
+                            self.send_header("Content-type", "text/html")
+                            self.end_headers()
+
+                            output = ansi_converter.convert(output.decode())
+                            output = output.replace("<title>", f"<title>{container} - ")
+                            output = output.replace(
+                                '<pre class="ansi2html-content">\n',
+                                '<pre class="ansi2html-content">',
+                            )
+                            output = output.replace("\n</pre>", "</pre>")
+                            output = output.replace("</body>\n", "</body>")
+                            output = output.encode("utf-8")
+
+                            self.wfile.write(output)
+
+                            return
+
+                        # Fallback to "text/plain"
+
+                        self.send_response(200)
+                        self.send_header("Content-type", "text/plain")
+                        self.end_headers()
+
+                        self.wfile.write(output)
+
+                        return
+
+                    except (CalledProcessError, JSONDecodeError):
+
+                        self.send_response(404)
+                        self.send_header("Content-type", "text/plain")
+                        self.end_headers()
+
+                        self.wfile.write(
+                            f"Could not get health of '{container}'".encode("utf-8")
+                        )
+
+                    return
+
         self.send_response(404)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
@@ -268,6 +340,8 @@ map_boolean = {
     "off": False,
 }
 
+ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
+
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 container_list = None
@@ -283,7 +357,9 @@ try:
 
         else:
 
-            logging.info(f"'{container_name}' is not a valid container name. Skipping")
+            logging.info(
+                f"'📦 {container_name}' is not a valid container name. Skipping"
+            )
 
 except KeyError:
 
@@ -292,12 +368,12 @@ except KeyError:
 if container_list:
 
     container_list.sort()
-    logging.info(f"These containers logs are available: {', '.join(container_list)}")
+    logging.info(f"📦 These containers logs are available: {', '.join(container_list)}")
 
 else:
 
     logging.info(
-        "Since no 'CONTAINER_LIST' environment variable was given ALL containers logs will be available"
+        "📦 Since no 'CONTAINER_LIST' environment variable was given ALL containers logs will be available"
     )
 
 tail_environ = 100
@@ -309,7 +385,7 @@ except (KeyError, ValueError):
 
     pass
 
-logging.info(f"Default log tail will be {tail_environ} lines")
+logging.info(f"📝 Default log tail will be {tail_environ} lines")
 
 timestamps_environ = False
 try:
@@ -323,9 +399,9 @@ except KeyError:
     pass
 
 if timestamps_environ:
-    logging.info("Timestamps will be shown by default")
+    logging.info("📅 Timestamps will be shown by default")
 else:
-    logging.info("Timestamps will NOT be shown by default")
+    logging.info("📅 Timestamps will NOT be shown by default")
 
 inspect_environ = False
 try:
@@ -337,11 +413,23 @@ except KeyError:
     pass
 
 if inspect_environ:
-    logging.info("The 'inspect' command is available")
+    logging.info("ℹ️ The 'inspect' command is available")
 else:
-    logging.info("The 'inspect' command is NOT available")
+    logging.info("ℹ️ The 'inspect' command is NOT available")
 
-ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
+health_environ = False
+try:
+
+    health_environ = map_boolean.get(environ["HEALTH"].lower(), timestamps_environ)
+
+except KeyError:
+
+    pass
+
+if health_environ:
+    logging.info("🏥 Container 'health' is available")
+else:
+    logging.info("🏥 Container 'health' is NOT available")
 
 
 class HTTPServerV6(HTTPServer):
@@ -351,7 +439,7 @@ class HTTPServerV6(HTTPServer):
 httpd = HTTPServerV6(("::", 8080), SimpleHTTPRequestHandler)
 try:
 
-    logging.info("Docker Logs Looker started")
+    logging.info("🟢 Docker Logs Looker started")
     httpd.serve_forever()
 
 except KeyboardInterrupt:
@@ -360,5 +448,5 @@ except KeyboardInterrupt:
 
 finally:
 
-    logging.info("\nDocker Logs Looker stopped")
+    logging.info("\n🔴 Docker Logs Looker stopped")
     httpd.server_close()
