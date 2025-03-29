@@ -58,7 +58,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
 
         accept_header = ""
         try:
-            accept_header = self.headers.get("Accept").split(",", 1)[0]
+            accept_header = self.headers.get("Accept")
+            accept_header = accept_header.split(",", 1)[0]
         except AttributeError:
             pass
 
@@ -70,11 +71,11 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
 
-                output = """<!doctype html>
+                output = """<!DOCTYPE html>
 <html>
      <head>
          <title>Docker Logs Looker</title>
-         <meta charset="UTF-8">
+         <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
          <style type="text/css">
              body {
                  background-color: #000000;
@@ -94,6 +95,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
      <body>
          <pre>
 """
+
+                output = add_refresh_meta_tag_if_necessary(output, query)
 
                 for container in docker_container_names_list:
 
@@ -143,7 +146,9 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                     tail = tail_environ
                     try:
 
-                        tail = abs(int(query["tail"][0]))
+                        tail = query["tail"][0]
+                        tail = int(tail)
+                        tail = abs(tail)
 
                     except (KeyError, ValueError):
 
@@ -152,9 +157,11 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                     timestamps = timestamps_environ
                     try:
 
-                        timestamps = map_boolean.get(
-                            query["timestamps"][0].lower(), timestamps
-                        )
+                        map_default = timestamps
+
+                        timestamps = query["timestamps"][0]
+                        timestamps = timestamps.lower()
+                        timestamps = map_boolean.get(timestamps, map_default)
 
                     except KeyError:
 
@@ -176,11 +183,11 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                             self.send_header("Content-type", "text/html")
                             self.end_headers()
 
-                            output = ansi_converter.convert(output.decode())
-                            output = output.replace("<title>", f"<title>{container} - ")
-                            output = output.replace("\n</pre>", "</pre>")
-                            output = output.replace("</body>\n", "</body>")
-                            output = output.encode("utf-8")
+                            output = convert_to_html(
+                                output, f"{container} - Docker Logs Looker"
+                            )
+
+                            output = add_refresh_meta_tag_if_necessary(output, query)
 
                             self.wfile.write(output)
 
@@ -281,15 +288,11 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                             self.send_header("Content-type", "text/html")
                             self.end_headers()
 
-                            output = ansi_converter.convert(output.decode())
-                            output = output.replace("<title>", f"<title>{container} - ")
-                            output = output.replace(
-                                '<pre class="ansi2html-content">\n',
-                                '<pre class="ansi2html-content">',
+                            output = convert_to_html(
+                                output, f"{container} - Docker Logs Looker"
                             )
-                            output = output.replace("\n</pre>", "</pre>")
-                            output = output.replace("</body>\n", "</body>")
-                            output = output.encode("utf-8")
+
+                            output = add_refresh_meta_tag_if_necessary(output, query)
 
                             self.wfile.write(output)
 
@@ -340,7 +343,53 @@ map_boolean = {
     "off": False,
 }
 
-ansi_converter = Ansi2HTMLConverter(title="Docker Logs Looker")
+ansi_converter = Ansi2HTMLConverter()
+
+
+def convert_to_html(ansi_text, html_title=""):
+    output = ansi_converter.convert(ansi_text.decode())
+    output = output.replace(
+        '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">',
+        "<!DOCTYPE html>",
+        1,
+    )
+    if html_title:
+        output = output.replace("<title>", f"<title>{html_title}", 1)
+    output = output.replace(
+        '<pre class="ansi2html-content">\n', '<pre class="ansi2html-content">', 1
+    )
+    output = output.replace("\n</pre>", "</pre>", 1)
+    output = output.replace("</body>\n", "</body>", 1)
+    output = output.encode("utf-8")
+    return output
+
+
+def add_refresh_meta_tag_if_necessary(html, query):
+
+    output = html
+    is_string = isinstance(output, str)
+    try:
+
+        refresh_seconds = query["refresh"][0]
+        logging.info(refresh_seconds)
+        refresh_seconds = int(refresh_seconds)
+
+        if refresh_seconds > 0:
+            if not is_string:
+                output = output.decode()
+            output = output.replace(
+                "</title>\n",
+                f'</title>\n<meta http-equiv="refresh" content="{refresh_seconds}">\n',
+                1,
+            )
+            if not is_string:
+                output = output.encode("utf-8")
+
+    except (KeyError, ValueError):
+
+        pass
+    return output
+
 
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 
@@ -379,7 +428,9 @@ else:
 tail_environ = 100
 try:
 
-    tail_environ = abs(int(environ["TAIL"]))
+    tail_environ = environ["TAIL"]
+    tail_environ = int(tail_environ)
+    tail_environ = abs(tail_environ)
 
 except (KeyError, ValueError):
 
@@ -390,9 +441,11 @@ logging.info(f"📝 Default log tail will be {tail_environ} lines")
 timestamps_environ = False
 try:
 
-    timestamps_environ = map_boolean.get(
-        environ["TIMESTAMPS"].lower(), timestamps_environ
-    )
+    map_default = timestamps_environ
+
+    timestamps_environ = environ["TIMESTAMPS"]
+    timestamps_environ = timestamps_environ.lower()
+    timestamps_environ = map_boolean.get(timestamps_environ, map_default)
 
 except KeyError:
 
@@ -406,7 +459,11 @@ else:
 inspect_environ = False
 try:
 
-    inspect_environ = map_boolean.get(environ["INSPECT"].lower(), timestamps_environ)
+    map_default = inspect_environ
+
+    inspect_environ = environ["INSPECT"]
+    inspect_environ = inspect_environ.lower()
+    inspect_environ = map_boolean.get(inspect_environ, map_default)
 
 except KeyError:
 
@@ -420,7 +477,11 @@ else:
 health_environ = False
 try:
 
-    health_environ = map_boolean.get(environ["HEALTH"].lower(), timestamps_environ)
+    map_default = health_environ
+
+    health_environ = environ["HEALTH"]
+    health_environ = health_environ.lower()
+    health_environ = map_boolean.get(health_environ, map_default)
 
 except KeyError:
 
